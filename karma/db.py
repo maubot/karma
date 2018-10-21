@@ -32,14 +32,19 @@ class KarmaCache:
     Karma: Type['Karma'] = None
 
     user_id: UserID = Column(String(255), primary_key=True)
-    karma: int = Column(Integer)
+    total: int = Column(Integer)
+    positive: int = Column(Integer)
+    negative: int = Column(Integer)
 
     @classmethod
-    def get_karma(cls, user_id: UserID) -> Optional[int]:
-        rows = cls.db.execute(select([cls.c.karma]).where(cls.c.user_id == user_id))
+    def get_karma(cls, user_id: UserID, conn: Optional[Connection] = None
+                  ) -> Optional['KarmaCache']:
+        if not conn:
+            conn = cls.db
+        rows = conn.execute(cls.t.select().where(cls.c.user_id == user_id))
         try:
-            row = next(rows)
-            return row[0]
+            user_id, total, positive, negative = next(rows)
+            return cls(user_id=user_id, total=total, positive=positive, negative=negative)
         except StopIteration:
             return None
 
@@ -57,17 +62,21 @@ class KarmaCache:
                 cls._set_karma(user_id, karma, conn)
 
     @classmethod
-    def get_high(cls, limit: int = 10) -> List[Tuple[UserID, int]]:
-        return list(cls.db.execute(cls.t.select().order_by(cls.c.karma.desc()).limit(limit)))
+    def get_high(cls, limit: int = 10) -> List['KarmaCache']:
+        return [cls(user_id=user_id, total=total, positive=positive, negative=negative)
+                for (user_id, total, positive, negative)
+                in cls.db.execute(cls.t.select().order_by(cls.c.total.desc()).limit(limit))]
 
     @classmethod
-    def get_low(cls, limit: int = 10) -> List[Tuple[UserID, int]]:
-        return list(cls.db.execute(cls.t.select().order_by(cls.c.karma.asc()).limit(limit)))
+    def get_low(cls, limit: int = 10) -> List['KarmaCache']:
+        return [cls(user_id=user_id, total=total, positive=positive, negative=negative)
+                for (user_id, total, positive, negative)
+                in cls.db.execute(cls.t.select().order_by(cls.c.total.asc()).limit(limit))]
 
     @classmethod
     def find_index_from_top(cls, user_id: UserID) -> int:
         i = 0
-        for (found,) in cls.db.execute(select([cls.c.user_id]).order_by(cls.c.karma.desc())):
+        for (found,) in cls.db.execute(select([cls.c.user_id]).order_by(cls.c.total.desc())):
             i += 1
             if found == user_id:
                 return i
@@ -78,19 +87,33 @@ class KarmaCache:
         with cls.db.begin() as txn:
             cls.set_karma(user_id, sum(entry.value for entry in cls.Karma.all(user_id)), txn)
 
+    def update(self, conn: Optional[Connection]) -> None:
+        if not conn:
+            conn = self.db
+        conn.execute(self.t.update()
+                     .where(self.c.user_id == self.user_id)
+                     .values(total=self.total, positive=self.positive, negative=self.negative))
+
+    def insert(self, conn: Optional[Connection] = None) -> None:
+        if not conn:
+            conn = self.db
+        conn.execute(self.t.insert().values(user_id=self.user_id, total=self.total,
+                                            positive=self.positive, negative=self.negative))
+
     @classmethod
-    def update(cls, user_id: UserID, value_diff: int, conn: Optional[Connection],
-               ignore_if_not_exist: bool = False) -> None:
+    def update_direct(cls, user_id: UserID, total_diff: int, positive_diff: int, negative_diff: int,
+                      conn: Optional[Connection] = None, ignore_if_not_exist: bool = False) -> None:
         if not conn:
             conn = cls.db
-        existing = conn.execute(select([cls.c.karma]).where(cls.c.user_id == user_id))
-        try:
-            karma = next(existing)[0] + value_diff
-            conn.execute(cls.t.update().where(cls.c.user_id == user_id).values(karma=karma))
-        except StopIteration:
-            if ignore_if_not_exist:
-                return
-            conn.execute(cls.t.insert().values(user_id=user_id, karma=value_diff))
+        existing = cls.get_karma(user_id, conn)
+        if existing:
+            existing.total += total_diff
+            existing.positive += positive_diff
+            existing.negative += negative_diff
+            existing.update(conn)
+        elif not ignore_if_not_exist:
+            cls(user_id=user_id, total=total_diff, positive=positive_diff,
+                negative=negative_diff).insert(conn)
 
 
 class Karma:
@@ -136,7 +159,10 @@ class Karma:
             txn.execute(self.t.delete().where(and_(
                 self.c.given_to == self.given_to, self.c.given_by == self.given_by,
                 self.c.given_in == self.given_in, self.c.given_for == self.given_for)))
-            self.KarmaCache.update(self.given_to, self.value, txn, ignore_if_not_exist=True)
+            self.KarmaCache.update_direct(self.given_to, total_diff=-self.value,
+                                          positive_diff=-self.value if self.value > 0 else 0,
+                                          negative_diff=self.value if self.value < 0 else 0,
+                                          conn=txn, ignore_if_not_exist=True)
 
     def insert(self) -> None:
         self.given_at = int(time() * 1000)
@@ -145,18 +171,35 @@ class Karma:
                                                given_in=self.given_in, given_for=self.given_for,
                                                given_from=self.given_from, value=self.value,
                                                given_at=self.given_at, content=self.content))
-            self.KarmaCache.update(self.given_to, self.value, txn)
+            self.KarmaCache.update_direct(self.given_to, total_diff=self.value,
+                                          positive_diff=self.value if self.value > 0 else 0,
+                                          negative_diff=-self.value if self.value < 0 else 0,
+                                          conn=txn)
 
     def update(self, new_value: int) -> None:
         self.given_at = int(time() * 1000)
-        value_diff = new_value - self.value
+        old_value = self.value
         self.value = new_value
         with self.db.begin() as txn:
             txn.execute(self.t.update().where(and_(
                 self.c.given_to == self.given_to, self.c.given_by == self.given_by,
                 self.c.given_in == self.given_in, self.c.given_for == self.given_for
             )).values(given_from=self.given_from, value=self.value, given_at=self.given_at))
-            self.KarmaCache.update(self.given_to, value_diff, txn)
+            total_diff = new_value - old_value
+            positive_diff = 0
+            negative_diff = 0
+            if old_value > 0:
+                positive_diff -= old_value
+            elif old_value < 0:
+                negative_diff += old_value
+            if new_value > 0:
+                positive_diff += new_value
+            elif new_value < 0:
+                negative_diff -= new_value
+            self.KarmaCache.update_direct(self.given_to, total_diff=total_diff,
+                                          positive_diff=positive_diff,
+                                          negative_diff=negative_diff,
+                                          conn=txn)
 
 
 class Version:

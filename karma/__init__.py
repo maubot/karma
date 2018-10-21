@@ -130,7 +130,8 @@ class KarmaBot(Plugin):
             await evt.reply("You don't have any karma :(")
             return
         index = self.karma_cache.find_index_from_top(evt.sender)
-        await evt.reply(f"You have {karma} karma and are #{index} on the top list.")
+        await evt.reply(f"You have {karma.total} karma (+{karma.positive}/-{karma.negative})"
+                        f" and are #{index} on the top list.")
 
     async def view_karma_list(self, evt: MessageEvent) -> None:
         list_type = evt.content.command.arguments[ARG_LIST]
@@ -145,6 +146,7 @@ class KarmaBot(Plugin):
             message = "#### Lowest karma\n\n"
         else:
             return
-        message += "\n".join(f"{index + 1}. [{mxid}](https://matrix.to/#/{mxid}): {karma}"
-                             for index, (mxid, karma) in enumerate(karma_list))
+        message += "\n".join(f"{index + 1}. [{karma.user_id}](https://matrix.to/#/{karma.user_id}):"
+                             f" {karma.total} (+{karma.positive}/-{karma.negative})"
+                             for index, karma in enumerate(karma_list))
         await evt.reply(message)
