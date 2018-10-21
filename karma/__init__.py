@@ -104,6 +104,9 @@ class KarmaBot(Plugin):
         karma_target = await self.client.get_event(evt.room_id, reply_to)
         if not karma_target:
             return
+        if karma_target.sender == evt.sender and value > 0:
+            await evt.reply("Hey! You can't upvote yourself!")
+            return
         karma_id = dict(given_to=karma_target.sender, given_by=evt.sender, given_in=evt.room_id,
                         given_for=karma_target.event_id)
         existing = self.karma.get(**karma_id)
