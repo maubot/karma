@@ -108,11 +108,14 @@ class KarmaBot(Plugin):
     def parse_content(self, evt: Event) -> str:
         if isinstance(evt, MessageEvent):
             if evt.content.msgtype in (MessageType.NOTICE, MessageType.TEXT, MessageType.EMOTE):
+                body = evt.content.body
                 if evt.content.msgtype == MessageType.EMOTE:
-                    evt.content.body = "/me " + evt.content.body
-                return (html.escape(evt.content.body[:50]) + " \u2026"
-                        if len(evt.content.body) > 60
-                        else html.escape(evt.content.body))
+                    body = "/me " + body
+                body = body.split("\n")[0]
+                if len(body) > 60:
+                    body = body[:50] + " \u2026"
+                body = html.escape(body)
+                return body
             name = media_reply_fallback_body_map[evt.content.msgtype]
             return f"[{name}]({self.client.get_download_url(evt.content.url)})"
         elif isinstance(evt, StateEvent):
