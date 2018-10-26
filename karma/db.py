@@ -24,8 +24,8 @@ from sqlalchemy.ext.declarative import declarative_base
 
 from mautrix.types import Event, UserID, EventID, RoomID
 
-EventKarmaStats = NamedTuple("EventKarmaStats", event_id=EventID, sender=UserID, content=str,
-                             total=int, positive=int, negative=int)
+EventKarmaStats = NamedTuple("EventKarmaStats", room_id=RoomID, event_id=EventID, sender=UserID,
+                             content=str, total=int, positive=int, negative=int)
 UserKarmaStats = NamedTuple("UserKarmaStats", user_id=UserID, total=int, positive=int, negative=int)
 
 
@@ -57,7 +57,7 @@ class Karma:
     def get_event_stats(cls, direction, limit: int = 10) -> Iterable['EventKarmaStats']:
         c = cls.c
         return (EventKarmaStats(*row) for row in cls.db.execute(
-            select([c.given_for, c.given_to, c.content,
+            select([c.given_in, c.given_for, c.given_to, c.content,
                     func.sum(c.value).label("total"),
                     func.sum(case([(c.value > 0, c.value)], else_=0)).label("positive"),
                     func.abs(func.sum(case([(c.value < 0, c.value)], else_=0))).label("negative")])

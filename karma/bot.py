@@ -208,7 +208,7 @@ class KarmaBot(Plugin):
         else:
             return None
         message += "\n".join(
-            f"{index + 1}. [Event](https://matrix.to/#/{event.event_id}) by "
+            f"{index + 1}. [Event](https://matrix.to/#/{event.room_id}/{event.event_id}) by "
             f"[{self.denotify(event.sender)}](https://matrix.to/#/{event.sender}) with "
             f"{self.sign(event.total)} karma (+{event.positive}/-{event.negative})\n"
             f"   > {event.content}"
