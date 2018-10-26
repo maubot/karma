@@ -208,10 +208,10 @@ class KarmaBot(Plugin):
         else:
             return None
         message += "\n".join(
-            f"{index + 1}. [Event](https://matrix.to/#/{event.room_id}/{event.event_id}) by "
-            f"[{self.denotify(event.sender)}](https://matrix.to/#/{event.sender}) with "
-            f"{self.sign(event.total)} karma (+{event.positive}/-{event.negative})\n"
-            f"   > {event.content}"
+            f"{index + 1}. <a href='https://matrix.to/#/{event.room_id}/{event.event_id}'>Event</a>"
+            f" by [{self.denotify(event.sender)}](https://matrix.to/#/{event.sender}) with"
+            f" {self.sign(event.total)} karma (+{event.positive}/-{event.negative})\n"
+            f"    > {event.content}"
             for index, event in enumerate(karma_list))
         return message
 
