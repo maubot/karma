@@ -62,7 +62,7 @@ class Karma:
                     func.sum(case([(c.value > 0, c.value)], else_=0)).label("positive"),
                     func.abs(func.sum(case([(c.value < 0, c.value)], else_=0))).label("negative")])
                 .group_by(c.given_for)
-                .order_by(direction("total"))
+                .order_by(direction("total"), asc(c.given_for))
                 .limit(limit)))
 
     @classmethod
@@ -72,6 +72,18 @@ class Karma:
     @classmethod
     def get_bottom_users(cls, limit: int = 10) -> Iterable['UserKarmaStats']:
         return cls.get_user_stats(direction=asc, limit=limit)
+
+    @classmethod
+    def get_user_stats(cls, direction, limit: int = 10) -> Iterable['UserKarmaStats']:
+        c = cls.c
+        return (UserKarmaStats(*row) for row in cls.db.execute(
+            select([c.given_to,
+                    func.sum(c.value).label("total"),
+                    func.sum(case([(c.value > 0, c.value)], else_=0)).label("positive"),
+                    func.abs(func.sum(case([(c.value < 0, c.value)], else_=0))).label("negative")])
+                .group_by(c.given_to)
+                .order_by(direction("total"), asc(c.given_to))
+                .limit(limit)))
 
     @classmethod
     def get_karma(cls, user_id: UserID) -> Optional['UserKarmaStats']:
@@ -92,23 +104,11 @@ class Karma:
         c = cls.c
         rows = cls.db.execute(select([c.given_to])
                               .group_by(c.given_to)
-                              .order_by(desc(func.sum(c.value))))
+                              .order_by(desc(func.sum(c.value)), asc(c.given_to)))
         for i, row in enumerate(rows):
             if row[0] == user_id:
                 return i
         return -1
-
-    @classmethod
-    def get_user_stats(cls, direction, limit: int = 10) -> Iterable['UserKarmaStats']:
-        c = cls.c
-        return (UserKarmaStats(*row) for row in cls.db.execute(
-            select([c.given_to,
-                    func.sum(c.value).label("total"),
-                    func.sum(case([(c.value > 0, c.value)], else_=0)).label("positive"),
-                    func.abs(func.sum(case([(c.value < 0, c.value)], else_=0))).label("negative")])
-                .group_by(c.given_to)
-                .order_by(direction("total"))
-                .limit(limit)))
 
     @classmethod
     def all(cls, user_id: UserID) -> Iterable['Karma']:
