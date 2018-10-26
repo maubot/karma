@@ -24,99 +24,6 @@ from sqlalchemy.ext.declarative import declarative_base
 
 from mautrix.types import Event, UserID, EventID, RoomID
 
-
-class KarmaCache:
-    __tablename__ = "karma_cache"
-    db: Engine = None
-    t: Table = None
-    c: ImmutableColumnCollection = None
-    Karma: Type['Karma'] = None
-
-    user_id: UserID = Column(String(255), primary_key=True)
-    total: int = Column(Integer)
-    positive: int = Column(Integer)
-    negative: int = Column(Integer)
-
-    @classmethod
-    def get_karma(cls, user_id: UserID, conn: Optional[Connection] = None
-                  ) -> Optional['KarmaCache']:
-        if not conn:
-            conn = cls.db
-        rows = conn.execute(cls.t.select().where(cls.c.user_id == user_id))
-        try:
-            user_id, total, positive, negative = next(rows)
-            return cls(user_id=user_id, total=total, positive=positive, negative=negative)
-        except StopIteration:
-            return None
-
-    @classmethod
-    def _set_karma(cls, user_id: UserID, karma: int, conn: Connection) -> None:
-        conn.execute(cls.t.delete().where(cls.c.user_id == user_id))
-        conn.execute(cls.t.insert().values(user_id=user_id, karma=karma))
-
-    @classmethod
-    def set_karma(cls, user_id: UserID, karma: int, conn: Optional[Connection] = None) -> None:
-        if conn:
-            cls._set_karma(user_id, karma, conn)
-        else:
-            with cls.db.begin() as conn:
-                cls._set_karma(user_id, karma, conn)
-
-    @classmethod
-    def get_high(cls, limit: int = 10) -> List['KarmaCache']:
-        return [cls(user_id=user_id, total=total, positive=positive, negative=negative)
-                for (user_id, total, positive, negative)
-                in cls.db.execute(cls.t.select().order_by(cls.c.total.desc()).limit(limit))]
-
-    @classmethod
-    def get_low(cls, limit: int = 10) -> List['KarmaCache']:
-        return [cls(user_id=user_id, total=total, positive=positive, negative=negative)
-                for (user_id, total, positive, negative)
-                in cls.db.execute(cls.t.select().order_by(cls.c.total.asc()).limit(limit))]
-
-    @classmethod
-    def find_index_from_top(cls, user_id: UserID) -> int:
-        i = 0
-        for (found,) in cls.db.execute(select([cls.c.user_id]).order_by(cls.c.total.desc())):
-            i += 1
-            if found == user_id:
-                return i
-        return -1
-
-    @classmethod
-    def recalculate(cls, user_id: UserID) -> None:
-        with cls.db.begin() as txn:
-            cls.set_karma(user_id, sum(entry.value for entry in cls.Karma.all(user_id)), txn)
-
-    def update(self, conn: Optional[Connection]) -> None:
-        if not conn:
-            conn = self.db
-        conn.execute(self.t.update()
-                     .where(self.c.user_id == self.user_id)
-                     .values(total=self.total, positive=self.positive, negative=self.negative))
-
-    def insert(self, conn: Optional[Connection] = None) -> None:
-        if not conn:
-            conn = self.db
-        conn.execute(self.t.insert().values(user_id=self.user_id, total=self.total,
-                                            positive=self.positive, negative=self.negative))
-
-    @classmethod
-    def update_direct(cls, user_id: UserID, total_diff: int, positive_diff: int, negative_diff: int,
-                      conn: Optional[Connection] = None, ignore_if_not_exist: bool = False) -> None:
-        if not conn:
-            conn = cls.db
-        existing = cls.get_karma(user_id, conn)
-        if existing:
-            existing.total += total_diff
-            existing.positive += positive_diff
-            existing.negative += negative_diff
-            existing.update(conn)
-        elif not ignore_if_not_exist:
-            cls(user_id=user_id, total=total_diff, positive=positive_diff,
-                negative=negative_diff).insert(conn)
-
-
 EventKarmaStats = NamedTuple("EventKarmaStats", event_id=EventID, sender=UserID, content=str,
                              total=int, positive=int, negative=int)
 UserKarmaStats = NamedTuple("UserKarmaStats", user_id=UserID, total=int, positive=int, negative=int)
@@ -127,7 +34,6 @@ class Karma:
     db: Engine = None
     t: Table = None
     c: ImmutableColumnCollection = None
-    KarmaCache: Type[KarmaCache] = None
 
     given_to: UserID = Column(String(255), primary_key=True)
     given_by: UserID = Column(String(255), primary_key=True)
@@ -139,18 +45,6 @@ class Karma:
     value: int = Column(Integer)
     content: str = Column(Text)
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "to": self.given_to,
-            "by": self.given_by,
-            "in": self.given_in,
-            "for": self.given_for,
-            "from": self.given_from,
-            "at": self.given_at,
-            "value": self.value,
-            "content": self.content,
-        }
-
     @classmethod
     def get_best_events(cls, limit: int = 10) -> Iterable['EventKarmaStats']:
         return cls.get_event_stats(direction=desc, limit=limit)
@@ -158,14 +52,6 @@ class Karma:
     @classmethod
     def get_worst_events(cls, limit: int = 10) -> Iterable['EventKarmaStats']:
         return cls.get_event_stats(direction=asc, limit=limit)
-
-    @classmethod
-    def get_top_users(cls, limit: int = 10) -> Iterable['UserKarmaStats']:
-        return cls.get_user_stats(direction=desc, limit=limit)
-
-    @classmethod
-    def get_bottom_users(cls, limit: int = 10) -> Iterable['UserKarmaStats']:
-        return cls.get_user_stats(direction=asc, limit=limit)
 
     @classmethod
     def get_event_stats(cls, direction, limit: int = 10) -> Iterable['EventKarmaStats']:
@@ -178,6 +64,39 @@ class Karma:
                 .group_by(c.given_for)
                 .order_by(direction("total"))
                 .limit(limit)))
+
+    @classmethod
+    def get_top_users(cls, limit: int = 10) -> Iterable['UserKarmaStats']:
+        return cls.get_user_stats(direction=desc, limit=limit)
+
+    @classmethod
+    def get_bottom_users(cls, limit: int = 10) -> Iterable['UserKarmaStats']:
+        return cls.get_user_stats(direction=asc, limit=limit)
+
+    @classmethod
+    def get_karma(cls, user_id: UserID) -> Optional['UserKarmaStats']:
+        c = cls.c
+        rows = cls.db.execute(
+            select([c.given_to,
+                    func.sum(c.value).label("total"),
+                    func.sum(case([(c.value > 0, c.value)], else_=0)).label("positive"),
+                    func.abs(func.sum(case([(c.value < 0, c.value)], else_=0))).label("negative")])
+                .where(c.given_to == user_id))
+        try:
+            return UserKarmaStats(*next(rows))
+        except StopIteration:
+            return None
+
+    @classmethod
+    def find_index_from_top(cls, user_id: UserKarmaStats) -> int:
+        c = cls.c
+        rows = cls.db.execute(select([c.given_to])
+                              .group_by(c.given_to)
+                              .order_by(desc(func.sum(c.value))))
+        for i, row in enumerate(rows):
+            if row[0] == user_id:
+                return i
+        return -1
 
     @classmethod
     def get_user_stats(cls, direction, limit: int = 10) -> Iterable['UserKarmaStats']:
@@ -230,51 +149,36 @@ class Karma:
                    given_from=given_from, given_at=given_at, value=value, content=content)
 
     def delete(self) -> None:
-        with self.db.begin() as txn:
-            txn.execute(self.t.delete().where(and_(
-                self.c.given_to == self.given_to, self.c.given_by == self.given_by,
-                self.c.given_in == self.given_in, self.c.given_for == self.given_for)))
-            self.KarmaCache.update_direct(self.given_to, total_diff=-self.value,
-                                          positive_diff=-self.value if self.value > 0 else 0,
-                                          negative_diff=self.value if self.value < 0 else 0,
-                                          conn=txn, ignore_if_not_exist=True)
+        self.db.execute(self.t.delete().where(and_(
+            self.c.given_to == self.given_to, self.c.given_by == self.given_by,
+            self.c.given_in == self.given_in, self.c.given_for == self.given_for)))
 
     def insert(self) -> None:
         self.given_at = int(time() * 1000)
-        with self.db.begin() as txn:
-            txn.execute(self.t.insert().values(given_to=self.given_to, given_by=self.given_by,
+        self.db.execute(self.t.insert().values(given_to=self.given_to, given_by=self.given_by,
                                                given_in=self.given_in, given_for=self.given_for,
                                                given_from=self.given_from, value=self.value,
                                                given_at=self.given_at, content=self.content))
-            self.KarmaCache.update_direct(self.given_to, total_diff=self.value,
-                                          positive_diff=self.value if self.value > 0 else 0,
-                                          negative_diff=-self.value if self.value < 0 else 0,
-                                          conn=txn)
 
     def update(self, new_value: int) -> None:
         self.given_at = int(time() * 1000)
-        old_value = self.value
         self.value = new_value
-        with self.db.begin() as txn:
-            txn.execute(self.t.update().where(and_(
-                self.c.given_to == self.given_to, self.c.given_by == self.given_by,
-                self.c.given_in == self.given_in, self.c.given_for == self.given_for
-            )).values(given_from=self.given_from, value=self.value, given_at=self.given_at))
-            total_diff = new_value - old_value
-            positive_diff = 0
-            negative_diff = 0
-            if old_value > 0:
-                positive_diff -= old_value
-            elif old_value < 0:
-                negative_diff += old_value
-            if new_value > 0:
-                positive_diff += new_value
-            elif new_value < 0:
-                negative_diff -= new_value
-            self.KarmaCache.update_direct(self.given_to, total_diff=total_diff,
-                                          positive_diff=positive_diff,
-                                          negative_diff=negative_diff,
-                                          conn=txn)
+        self.db.execute(self.t.update().where(and_(
+            self.c.given_to == self.given_to, self.c.given_by == self.given_by,
+            self.c.given_in == self.given_in, self.c.given_for == self.given_for
+        )).values(given_from=self.given_from, value=self.value, given_at=self.given_at))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "to": self.given_to,
+            "by": self.given_by,
+            "in": self.given_in,
+            "for": self.given_for,
+            "from": self.given_from,
+            "at": self.given_at,
+            "value": self.value,
+            "content": self.content,
+        }
 
 
 class Version:
@@ -286,11 +190,8 @@ class Version:
     version: int = Column(Integer, primary_key=True)
 
 
-def make_tables(engine: Engine) -> Tuple[Type[KarmaCache], Type[Karma], Type[Version]]:
+def make_tables(engine: Engine) -> Tuple[Type[Karma], Type[Version]]:
     base = declarative_base()
-
-    class KarmaCacheImpl(KarmaCache, base):
-        __table__: Table
 
     class KarmaImpl(Karma, base):
         __table__: Table
@@ -299,14 +200,13 @@ def make_tables(engine: Engine) -> Tuple[Type[KarmaCache], Type[Karma], Type[Ver
         __table__: Table
 
     base.metadata.bind = engine
-    for table in KarmaCacheImpl, KarmaImpl, VersionImpl:
+    for table in KarmaImpl, VersionImpl:
         table.db = engine
         table.t = table.__table__
         table.c = table.__table__.c
         table.Karma = KarmaImpl
-        table.KarmaCache = KarmaCacheImpl
 
     # TODO replace with alembic
     base.metadata.create_all()
 
-    return KarmaCacheImpl, KarmaImpl, VersionImpl
+    return KarmaImpl, VersionImpl

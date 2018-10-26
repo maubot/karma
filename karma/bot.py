@@ -24,7 +24,7 @@ from mautrix.types import (Event, StateEvent, EventID, UserID, FileInfo, Message
                            MediaMessageEventContent)
 from mautrix.client.api.types.event.message import media_reply_fallback_body_map
 
-from .db import make_tables, Karma, KarmaCache, Version
+from .db import make_tables, Karma, Version
 
 COMMAND_PASSIVE_UPVOTE = "xyz.maubot.karma.up"
 COMMAND_PASSIVE_DOWNVOTE = "xyz.maubot.karma.down"
@@ -33,7 +33,7 @@ ARG_LIST = "$list"
 ARG_LIST_MATCHES = "top|bot(?:tom)?|best|worst"
 COMMAND_KARMA_LIST = f"karma {ARG_LIST}"
 ARG_USER = "$user"
-ARG_USER_MATCHES = ".+"
+ARG_USER_MATCHES = "@[^:]+:.+"
 COMMAND_KARMA_VIEW = f"karma {ARG_USER}"
 COMMAND_KARMA_STATS = "karma stats"
 COMMAND_OWN_KARMA_VIEW = "karma"
@@ -55,14 +55,13 @@ DOWNVOTE = f"^(?:{DOWNVOTE_EMOJI}|{DOWNVOTE_EMOJI_SHORTHAND}|{DOWNVOTE_TEXT})$"
 
 
 class KarmaBot(Plugin):
-    karma_cache: Type[KarmaCache]
     karma: Type[Karma]
     version: Type[Version]
     db: Engine
 
     async def start(self) -> None:
         self.db = self.request_db_engine()
-        self.karma_cache, self.karma, self.version = make_tables(self.db)
+        self.karma, self.version = make_tables(self.db)
         self.set_command_spec(CommandSpec(commands=[
             Command(syntax=COMMAND_KARMA_STATS, description="View global karma statistics"),
             Command(syntax=COMMAND_OWN_KARMA_VIEW, description="View your karma"),
@@ -183,10 +182,10 @@ class KarmaBot(Plugin):
 
     def karma_user_list(self, list_type: str) -> Optional[str]:
         if list_type == "top":
-            karma_list = self.karma_cache.get_high()
+            karma_list = self.karma.get_top_users()
             message = "#### Highest karma\n\n"
         elif list_type in ("bot", "bottom"):
-            karma_list = self.karma_cache.get_low()
+            karma_list = self.karma.get_bottom_users()
             message = "#### Lowest karma\n\n"
         else:
             return None
@@ -214,7 +213,19 @@ class KarmaBot(Plugin):
         return message
 
     async def view_karma(self, evt: MessageEvent) -> None:
-        pass
+        try:
+            localpart, server_name = self.client.parse_mxid(evt.content.command.arguments[ARG_USER])
+        except (ValueError, KeyError):
+            return
+        mxid = UserID(f"@{localpart}:{server_name}")
+        karma = self.karma.get_karma(mxid)
+        if karma is None:
+            await evt.reply(f"[{localpart}](https://matrix.to/#/{mxid}) has no karma :(")
+            return
+        index = self.karma.find_index_from_top(mxid)
+        await evt.reply(f"[{localpart}](https://matrix.to/#/{mxid}) has {karma.total} karma "
+                        f"(+{karma.positive}/-{karma.negative}) "
+                        f"and is #{index + 1 or '∞'} on the top list.")
 
     async def export_own_karma(self, evt: MessageEvent) -> None:
         karma_list = [karma.to_dict() for karma in self.karma.export(evt.sender)]
@@ -231,13 +242,13 @@ class KarmaBot(Plugin):
         ))
 
     async def view_own_karma(self, evt: MessageEvent) -> None:
-        karma = self.karma_cache.get_karma(evt.sender)
+        karma = self.karma.get_karma(evt.sender)
         if karma is None:
             await evt.reply("You don't have any karma :(")
             return
-        index = self.karma_cache.find_index_from_top(evt.sender)
-        await evt.reply(f"You have {karma.total} karma (+{karma.positive}/-{karma.negative})"
-                        f" and are #{index} on the top list.")
+        index = self.karma.find_index_from_top(evt.sender)
+        await evt.reply(f"You have {karma.total} karma (+{karma.positive}/-{karma.negative}) "
+                        f"and are #{index + 1 or '∞'} on the top list.")
 
     async def own_karma_breakdown(self, evt: MessageEvent) -> None:
         await evt.reply("Not yet implemented :(")
