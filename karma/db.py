@@ -80,8 +80,8 @@ class Karma:
             select([c.given_to,
                     func.sum(c.value).label("total"),
                     func.sum(case([(c.value > 0, c.value)], else_=0)).label("positive"),
-                    func.abs(func.sum(case([(c.value < 0, c.value)], else_=0))).label("negative")])
-                .where(c.given_to == user_id))
+                    func.abs(func.sum(case([(c.value < 0, c.value)], else_=0))).label("negative")]
+                   ).where(c.given_to == user_id))
         try:
             return UserKarmaStats(*next(rows))
         except StopIteration:

@@ -219,7 +219,7 @@ class KarmaBot(Plugin):
             return
         mxid = UserID(f"@{localpart}:{server_name}")
         karma = self.karma.get_karma(mxid)
-        if karma is None:
+        if karma is None or karma.total is None:
             await evt.reply(f"[{localpart}](https://matrix.to/#/{mxid}) has no karma :(")
             return
         index = self.karma.find_index_from_top(mxid)
@@ -243,7 +243,7 @@ class KarmaBot(Plugin):
 
     async def view_own_karma(self, evt: MessageEvent) -> None:
         karma = self.karma.get_karma(evt.sender)
-        if karma is None:
+        if karma is None or karma.total is None:
             await evt.reply("You don't have any karma :(")
             return
         index = self.karma.find_index_from_top(evt.sender)
