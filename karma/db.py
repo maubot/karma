@@ -13,13 +13,13 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from typing import List, Tuple, Optional, Type, Iterable, Dict, Any, NamedTuple
+from typing import Tuple, Optional, Type, Iterable, Dict, Any, NamedTuple
 from time import time
 
 from sqlalchemy import (Column, String, Integer, BigInteger, Text, Table,
                         select, and_, or_, func, case, asc, desc)
 from sqlalchemy.sql.base import ImmutableColumnCollection
-from sqlalchemy.engine.base import Engine, Connection
+from sqlalchemy.engine.base import Engine
 from sqlalchemy.ext.declarative import declarative_base
 
 from mautrix.types import Event, UserID, EventID, RoomID
