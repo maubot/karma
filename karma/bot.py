@@ -117,7 +117,7 @@ class KarmaBot(Plugin):
                 body = html.escape(body)
                 return body
             name = media_reply_fallback_body_map[evt.content.msgtype]
-            return f"[{name}]({self.client.get_download_url(evt.content.url)})"
+            return f"[{name}]({self.client.api.get_download_url(evt.content.url)})"
         elif isinstance(evt, StateEvent):
             return "a state event"
         return "an unknown event"
@@ -168,7 +168,7 @@ class KarmaBot(Plugin):
 
     def denotify(self, mxid: UserID) -> str:
         localpart, _ = self.client.parse_mxid(mxid)
-        return localpart.replace("", "\u2063")
+        return "\u2063".join(localpart)
 
     async def karma_list(self, evt: MessageEvent) -> None:
         list_type = evt.content.command.arguments[ARG_LIST]
