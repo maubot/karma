@@ -1,0 +1,6 @@
+# Whether or not everyone can vote
+democracy: true
+# The list of people to filter.
+# If democracy is enabled, this is a blacklist. Otherwise this is a whitelist.
+filter:
+- "@user:example.com"

@@ -23,6 +23,7 @@ from maubot import Plugin, CommandSpec, Command, PassiveCommand, Argument, Messa
 from mautrix.types import (Event, StateEvent, EventID, UserID, FileInfo, MessageType,
                            MediaMessageEventContent)
 from mautrix.client.api.types.event.message import media_reply_fallback_body_map
+from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 
 from .db import make_tables, Karma, Version
 
@@ -54,12 +55,19 @@ DOWNVOTE_TEXT = r"(?:-(?:1|-)?)"
 DOWNVOTE = f"^(?:{DOWNVOTE_EMOJI}|{DOWNVOTE_EMOJI_SHORTHAND}|{DOWNVOTE_TEXT})$"
 
 
+class Config(BaseProxyConfig):
+    def do_update(self, helper: ConfigUpdateHelper) -> None:
+        helper.copy("democracy")
+        helper.copy("filter")
+
+
 class KarmaBot(Plugin):
     karma: Type[Karma]
     version: Type[Version]
     db: Engine
 
     async def start(self) -> None:
+        self.config.load_and_update()
         self.db = self.request_db_engine()
         self.karma, self.version = make_tables(self.db)
         self.set_command_spec(CommandSpec(commands=[
@@ -133,6 +141,10 @@ class KarmaBot(Plugin):
 
     async def vote(self, evt: MessageEvent, target: EventID, value: int) -> None:
         if not target:
+            return
+        in_filter = evt.sender in self.config["filter"]
+        if self.config["democracy"] == in_filter:
+            await evt.reply("Sorry, you're not allowed to vote.")
             return
         if self.karma.is_vote_event(target):
             await evt.reply("Sorry, you can't vote on votes.")
@@ -255,3 +267,7 @@ class KarmaBot(Plugin):
 
     async def own_karma_breakdown(self, evt: MessageEvent) -> None:
         await evt.reply("Not yet implemented :(")
+
+    @classmethod
+    def get_config_class(cls) -> Type[BaseProxyConfig]:
+        return Config
