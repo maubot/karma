@@ -1,2 +1,2 @@
 #!/bin/bash
-zip -9r karma.mbp base-config.yaml karma/ maubot.ini
+zip -9r karma.mbp base-config.yaml karma/ maubot.yaml

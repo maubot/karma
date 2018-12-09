@@ -1,0 +1,8 @@
+id: xyz.maubot.karma
+version: 0.1.1
+license: AGPL-3.0-or-later
+modules:
+- karma
+main_class: KarmaBot
+extra_files:
+- base-config.yaml
