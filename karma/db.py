@@ -100,7 +100,7 @@ class Karma:
             return None
 
     @classmethod
-    def find_index_from_top(cls, user_id: UserKarmaStats) -> int:
+    def find_index_from_top(cls, user_id: UserID) -> int:
         c = cls.c
         rows = cls.db.execute(select([c.given_to])
                               .group_by(c.given_to)
