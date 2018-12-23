@@ -45,13 +45,13 @@ class Config(BaseProxyConfig):
 
 
 class KarmaBot(Plugin):
-    karma: Type[Karma]
+    karma_t: Type[Karma]
     version: Type[Version]
 
     async def start(self) -> None:
         await super().start()
         self.config.load_and_update()
-        self.karma, self.version = make_tables(self.database)
+        self.karma_t, self.version = make_tables(self.database)
 
     @command.new("karma", help="View users' karma or karma top lists")
     async def karma(self) -> None:
@@ -78,7 +78,8 @@ class KarmaBot(Plugin):
         await evt.reply("Not yet implemented :(")
 
     @karma.subcommand("view", help="View your or another users karma")
-    @command.argument("user", required=False, parser=Client.parse_mxid)
+    @command.argument("user", "user ID", required=False,
+                      parser=lambda val: Client.parse_mxid(val) if val else None)
     async def view_karma(self, evt: MessageEvent, user: Optional[Tuple[str, str]]) -> None:
         if user is not None:
             mxid = UserID(f"@{user[0]}:{user[1]}")
@@ -90,18 +91,18 @@ class KarmaBot(Plugin):
             name = "You"
             word_have = "have"
             word_to_be = "are"
-        karma = self.karma.get_karma(mxid)
+        karma = self.karma_t.get_karma(mxid)
         if karma is None or karma.total is None:
             await evt.reply(f"{name} {word_have} no karma :(")
             return
-        index = self.karma.find_index_from_top(mxid)
+        index = self.karma_t.find_index_from_top(mxid)
         await evt.reply(f"{name} {word_have} {karma.total} karma "
                         f"(+{karma.positive}/-{karma.negative}) "
                         f"and {word_to_be} #{index + 1 or '∞'} on the top list.")
 
     @karma.subcommand("export", help="Export the data of your karma")
     async def export_own_karma(self, evt: MessageEvent) -> None:
-        karma_list = [karma.to_dict() for karma in self.karma.export(evt.sender)]
+        karma_list = [karma.to_dict() for karma in self.karma_t.export(evt.sender)]
         data = json.dumps(karma_list).encode("utf-8")
         url = await self.client.upload_media(data, mime_type="application/json")
         await evt.reply(MediaMessageEventContent(
@@ -119,19 +120,19 @@ class KarmaBot(Plugin):
         await evt.reply("Not yet implemented :(")
 
     @karma.subcommand("top", help="View the highest rated users")
-    async def karma_list(self, evt: MessageEvent) -> None:
+    async def karma_top(self, evt: MessageEvent) -> None:
         await evt.reply(self._karma_user_list("top"))
 
     @karma.subcommand("bottom", help="View the lowest rated users")
-    async def karma_list(self, evt: MessageEvent) -> None:
+    async def karma_bottom(self, evt: MessageEvent) -> None:
         await evt.reply(self._karma_user_list("bottom"))
 
     @karma.subcommand("best", help="View the highest rated messages")
-    async def karma_list(self, evt: MessageEvent) -> None:
+    async def karma_best(self, evt: MessageEvent) -> None:
         await evt.reply(self._karma_message_list("best"))
 
     @karma.subcommand("worst", help="View the lowest rated messages")
-    async def karma_list(self, evt: MessageEvent) -> None:
+    async def karma_worst(self, evt: MessageEvent) -> None:
         await evt.reply(self._karma_message_list("worst"))
 
     def _parse_content(self, evt: Event) -> str:
@@ -167,7 +168,7 @@ class KarmaBot(Plugin):
         if self.config["democracy"] == in_filter:
             await evt.reply("Sorry, you're not allowed to vote.")
             return
-        if self.karma.is_vote_event(target):
+        if self.karma_t.is_vote_event(target):
             await evt.reply("Sorry, you can't vote on votes.")
             return
         karma_target = await self.client.get_event(evt.room_id, target)
@@ -178,15 +179,15 @@ class KarmaBot(Plugin):
             return
         karma_id = dict(given_to=karma_target.sender, given_by=evt.sender, given_in=evt.room_id,
                         given_for=karma_target.event_id)
-        existing = self.karma.get(**karma_id)
+        existing = self.karma_t.get(**karma_id)
         if existing is not None:
             if existing.value == value:
                 await evt.reply(f"You already {self._sign(value)}'d that message.")
                 return
             existing.update(new_value=value)
         else:
-            karma = self.karma(**karma_id, given_from=evt.event_id, value=value,
-                               content=self._parse_content(karma_target))
+            karma = self.karma_t(**karma_id, given_from=evt.event_id, value=value,
+                                 content=self._parse_content(karma_target))
             karma.insert()
         await evt.mark_read()
 
@@ -196,10 +197,10 @@ class KarmaBot(Plugin):
 
     def _karma_user_list(self, list_type: str) -> Optional[str]:
         if list_type == "top":
-            karma_list = self.karma.get_top_users()
+            karma_list = self.karma_t.get_top_users()
             message = "#### Highest karma\n\n"
         elif list_type in ("bot", "bottom"):
-            karma_list = self.karma.get_bottom_users()
+            karma_list = self.karma_t.get_bottom_users()
             message = "#### Lowest karma\n\n"
         else:
             return None
@@ -211,15 +212,15 @@ class KarmaBot(Plugin):
 
     def _karma_message_list(self, list_type: str) -> Optional[str]:
         if list_type == "best":
-            karma_list = self.karma.get_best_events()
+            karma_list = self.karma_t.get_best_events()
             message = "#### Best messages\n\n"
         elif list_type == "worst":
-            karma_list = self.karma.get_worst_events()
+            karma_list = self.karma_t.get_worst_events()
             message = "#### Worst messages\n\n"
         else:
             return None
         message += "\n".join(
-            f"{index + 1}. <a href='https://matrix.to/#/{event.room_id}/{event.event_id}'>Event</a>"
+            f"{index + 1}. [Event](https://matrix.to/#/{event.room_id}/{event.event_id})"
             f" by [{self._denotify(event.sender)}](https://matrix.to/#/{event.sender}) with"
             f" {self._sign(event.total)} karma (+{event.positive}/-{event.negative})\n"
             f"    > {event.content}"

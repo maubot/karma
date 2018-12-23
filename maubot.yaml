@@ -6,3 +6,4 @@ modules:
 main_class: KarmaBot
 extra_files:
 - base-config.yaml
+database: true
