@@ -17,13 +17,13 @@ from typing import Awaitable, Type, Optional, Tuple
 import json
 import html
 
-from maubot import Plugin, MessageEvent
-from maubot.handlers import command
 from mautrix.client import Client
 from mautrix.types import (Event, StateEvent, EventID, UserID, FileInfo, MessageType,
                            MediaMessageEventContent)
 from mautrix.client.api.types.event.message import media_reply_fallback_body_map
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
+from maubot import Plugin, MessageEvent
+from maubot.handlers import command
 
 from .db import make_tables, Karma, Version
 
@@ -66,11 +66,11 @@ class KarmaBot(Plugin):
         return self._vote(evt, evt.content.get_reply_to(), -1)
 
     @command.passive(UPVOTE)
-    def upvote(self, evt: MessageEvent) -> Awaitable[None]:
+    def upvote(self, evt: MessageEvent, _: Tuple[str]) -> Awaitable[None]:
         return self._vote(evt, evt.content.get_reply_to(), +1)
 
     @command.passive(DOWNVOTE)
-    def downvote(self, evt: MessageEvent) -> Awaitable[None]:
+    def downvote(self, evt: MessageEvent, _: Tuple[str]) -> Awaitable[None]:
         return self._vote(evt, evt.content.get_reply_to(), -1)
 
     @karma.subcommand("stats", help="View global karma statistics")
