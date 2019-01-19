@@ -231,7 +231,8 @@ class KarmaBot(Plugin):
             f"{index + 1}. [Event](https://matrix.to/#/{event.room_id}/{event.event_id})"
             f" by [{self._denotify(event.sender)}](https://matrix.to/#/{event.sender}) with"
             f" {self._sign(event.total)} karma (+{event.positive}/-{event.negative})\n"
-            f"    > {event.content}"
+            f"    \n"
+            f"    > {event.content}\n"
             for index, event in enumerate(karma_list))
         return message
 
