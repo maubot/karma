@@ -4,3 +4,15 @@ democracy: true
 # If democracy is enabled, this is a blacklist. Otherwise this is a whitelist.
 filter:
 - "@user:example.com"
+
+# Error message switches.
+# If false, the bot will simply not react when the error occurs.
+errors:
+    # Sorry, you're not allowed to vote.
+    filtered_users: true
+    # Sorry, you can't vote on votes.
+    vote_on_vote: true
+    # Hey! You can't upvote yourself!
+    upvote_self: true
+    # You already ±1'd that message.
+    already_voted: true

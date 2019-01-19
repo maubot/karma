@@ -42,6 +42,10 @@ class Config(BaseProxyConfig):
     def do_update(self, helper: ConfigUpdateHelper) -> None:
         helper.copy("democracy")
         helper.copy("filter")
+        helper.copy("errors.filtered_users")
+        helper.copy("errors.vote_on_vote")
+        helper.copy("errors.upvote_self")
+        helper.copy("errors.already_voted")
 
 
 class KarmaBot(Plugin):
@@ -166,23 +170,27 @@ class KarmaBot(Plugin):
             return
         in_filter = evt.sender in self.config["filter"]
         if self.config["democracy"] == in_filter:
-            await evt.reply("Sorry, you're not allowed to vote.")
+            if self.config["errors.filtered_users"]:
+                await evt.reply("Sorry, you're not allowed to vote.")
             return
         if self.karma_t.is_vote_event(target):
-            await evt.reply("Sorry, you can't vote on votes.")
+            if self.config["errors.vote_on_vote"]:
+                await evt.reply("Sorry, you can't vote on votes.")
             return
         karma_target = await self.client.get_event(evt.room_id, target)
         if not karma_target:
             return
         if karma_target.sender == evt.sender and value > 0:
-            await evt.reply("Hey! You can't upvote yourself!")
+            if self.config["errors.upvote_self"]:
+                await evt.reply("Hey! You can't upvote yourself!")
             return
         karma_id = dict(given_to=karma_target.sender, given_by=evt.sender, given_in=evt.room_id,
                         given_for=karma_target.event_id)
         existing = self.karma_t.get(**karma_id)
         if existing is not None:
             if existing.value == value:
-                await evt.reply(f"You already {self._sign(value)}'d that message.")
+                if self.config["errors.already_voted"]:
+                    await evt.reply(f"You already {self._sign(value)}'d that message.")
                 return
             existing.update(new_value=value)
         else:
