@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from typing import Awaitable, Type, Optional, Tuple
+import hashlib
 import json
 import html
 
@@ -41,11 +42,18 @@ DOWNVOTE = f"^(?:{DOWNVOTE_EMOJI}|{DOWNVOTE_EMOJI_SHORTHAND}|{DOWNVOTE_TEXT})$"
 class Config(BaseProxyConfig):
     def do_update(self, helper: ConfigUpdateHelper) -> None:
         helper.copy("democracy")
+        helper.copy("opt_out")
+        helper.copy("show_content")
+        helper.copy("store_content")
         helper.copy("filter")
         helper.copy("errors.filtered_users")
         helper.copy("errors.vote_on_vote")
         helper.copy("errors.upvote_self")
         helper.copy("errors.already_voted")
+
+
+def sha1(val: str) -> str:
+    return hashlib.sha1(val.encode("utf-8")).hexdigest()
 
 
 class KarmaBot(Plugin):
@@ -140,15 +148,18 @@ class KarmaBot(Plugin):
         await evt.reply(self._karma_message_list("worst"))
 
     def _parse_content(self, evt: Event) -> str:
+        if not self.config["store_content"]:
+            return ""
         if isinstance(evt, MessageEvent):
+            evt.content.trim_reply_fallback()
             if evt.content.msgtype in (MessageType.NOTICE, MessageType.TEXT, MessageType.EMOTE):
                 body = evt.content.body
                 if evt.content.msgtype == MessageType.EMOTE:
                     body = "/me " + body
-                body = body.split("\n")[0]
-                if len(body) > 60:
-                    body = body[:50] + " \u2026"
-                body = html.escape(body)
+                if self.config["store_content"] == "partial":
+                    body = body.split("\n")[0]
+                    if len(body) > 60:
+                        body = body[:50] + " \u2026"
                 return body
             name = media_reply_fallback_body_map[evt.content.msgtype]
             return f"[{name}]({self.client.api.get_download_url(evt.content.url)})"
@@ -169,7 +180,7 @@ class KarmaBot(Plugin):
         if not target:
             return
         in_filter = evt.sender in self.config["filter"]
-        if self.config["democracy"] == in_filter:
+        if self.config["democracy"] == in_filter or sha1(evt.sender) in self.config["opt_out"]:
             if self.config["errors.filtered_users"]:
                 await evt.reply("Sorry, you're not allowed to vote.")
             return
@@ -186,6 +197,9 @@ class KarmaBot(Plugin):
             return
         karma_id = dict(given_to=karma_target.sender, given_by=evt.sender, given_in=evt.room_id,
                         given_for=karma_target.event_id)
+        anonymize = sha1(karma_target.sender) in self.config["opt_out"]
+        if anonymize:
+            karma_id["given_to"] = ""
         existing = self.karma_t.get(**karma_id)
         if existing is not None:
             if existing.value == value:
@@ -195,13 +209,18 @@ class KarmaBot(Plugin):
             existing.update(new_value=value)
         else:
             karma = self.karma_t(**karma_id, given_from=evt.event_id, value=value,
-                                 content=self._parse_content(karma_target))
+                                 content=self._parse_content(karma_target) if not anonymize else "")
             karma.insert()
         await evt.mark_read()
 
     def _denotify(self, mxid: UserID) -> str:
         localpart, _ = self.client.parse_mxid(mxid)
         return "\u2063".join(localpart)
+
+    def _user_link(self, user_id: UserID) -> str:
+        if not user_id:
+            return "Anonymous"
+        return f"[{self._denotify(user_id)}](https://matrix.to/#/{user_id})"
 
     def _karma_user_list(self, list_type: str) -> Optional[str]:
         if list_type == "top":
@@ -213,10 +232,18 @@ class KarmaBot(Plugin):
         else:
             return None
         message += "\n".join(
-            f"{index + 1}. [{self._denotify(karma.user_id)}](https://matrix.to/#/{karma.user_id}): "
+            f"{index + 1}. {self._user_link(karma.user_id)}: "
             f"{self._sign(karma.total)} (+{karma.positive}/-{karma.negative})"
-            for index, karma in enumerate(karma_list))
+            for index, karma in enumerate(karma_list) if karma.user_id)
         return message
+
+    def _message_text(self, index, event) -> str:
+        text = (f"{index + 1}. [Event](https://matrix.to/#/{event.room_id}/{event.event_id})"
+                f" by {self._user_link(event.sender)} with"
+                f" {self._sign(event.total)} karma (+{event.positive}/-{event.negative})\n")
+        if event.content and self.config["show_content"]:
+            text += f"    \n    > {html.escape(event.content)}\n"
+        return text
 
     def _karma_message_list(self, list_type: str) -> Optional[str]:
         if list_type == "best":
@@ -227,13 +254,8 @@ class KarmaBot(Plugin):
             message = "#### Worst messages\n\n"
         else:
             return None
-        message += "\n".join(
-            f"{index + 1}. [Event](https://matrix.to/#/{event.room_id}/{event.event_id})"
-            f" by [{self._denotify(event.sender)}](https://matrix.to/#/{event.sender}) with"
-            f" {self._sign(event.total)} karma (+{event.positive}/-{event.negative})\n"
-            f"    \n"
-            f"    > {event.content}\n"
-            for index, event in enumerate(karma_list))
+        message += "\n".join(self._message_text(index, event)
+                             for index, event in enumerate(karma_list))
         return message
 
     @classmethod

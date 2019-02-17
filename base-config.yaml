@@ -1,4 +1,16 @@
-# Whether or not everyone can vote
+# Whether or not to show content of messages in !karma best.
+show_content: true
+# Whether or not to store content of messages.
+# false   - no storage
+# partial - store one line
+# full    - store whole content
+store_content: partial
+
+# SHA1 hashes of users who have opted out.
+opt_out:
+- 783660685956dadb4fa2f1aeac54c8525e8b75b7
+
+# Whether or not everyone can vote.
 democracy: true
 # The list of people to filter.
 # If democracy is enabled, this is a blacklist. Otherwise this is a whitelist.
