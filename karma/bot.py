@@ -20,11 +20,11 @@ import html
 
 from mautrix.client import Client
 from mautrix.types import (Event, StateEvent, EventID, UserID, FileInfo, MessageType,
-                           MediaMessageEventContent)
+                           MediaMessageEventContent, EventType, GenericEvent, RedactionEvent)
 from mautrix.client.api.types.event.message import media_reply_fallback_body_map
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from maubot import Plugin, MessageEvent
-from maubot.handlers import command
+from maubot.handlers import command, event
 
 from .db import make_tables, Karma, Version
 
@@ -56,6 +56,11 @@ def sha1(val: str) -> str:
     return hashlib.sha1(val.encode("utf-8")).hexdigest()
 
 
+def reaction_key(evt: GenericEvent) -> None:
+    relates_to = evt.content.get("m.relates_to", None) or {}
+    return relates_to.get("key") if relates_to.get("rel_type", None) == "m.annotation" else None
+
+
 class KarmaBot(Plugin):
     karma_t: Type[Karma]
     version: Type[Version]
@@ -84,6 +89,29 @@ class KarmaBot(Plugin):
     @command.passive(DOWNVOTE)
     def downvote(self, evt: MessageEvent, _: Tuple[str]) -> Awaitable[None]:
         return self._vote(evt, evt.content.get_reply_to(), -1)
+
+    @command.passive(regex=UPVOTE_EMOJI, field=reaction_key,
+                     event_type=EventType.find("m.reaction"), msgtypes=None)
+    def upvote_react(self, evt: GenericEvent, key: Tuple[str]) -> Awaitable[None]:
+        try:
+            return self._vote(evt, evt.content["m.relates_to"]["event_id"], 1)
+        except KeyError:
+            pass
+
+    @command.passive(regex=DOWNVOTE_EMOJI, field=reaction_key,
+                     event_type=EventType.find("m.reaction"), msgtypes=None)
+    def downvote_react(self, evt: GenericEvent, key: Tuple[str]) -> Awaitable[None]:
+        try:
+            return self._vote(evt, evt.content["m.relates_to"]["event_id"], -1)
+        except KeyError:
+            pass
+
+    @event.on(EventType.ROOM_REDACTION)
+    async def redact(self, evt: RedactionEvent) -> None:
+        karma = self.karma_t.get_by_given_from(evt.redacts)
+        if karma:
+            self.log.debug(f"Deleting {karma} due to redaction by {evt.sender}.")
+            karma.delete()
 
     @karma.subcommand("stats", help="View global karma statistics")
     async def karma_stats(self, evt: MessageEvent) -> None:
@@ -181,18 +209,18 @@ class KarmaBot(Plugin):
             return
         in_filter = evt.sender in self.config["filter"]
         if self.config["democracy"] == in_filter or sha1(evt.sender) in self.config["opt_out"]:
-            if self.config["errors.filtered_users"]:
+            if self.config["errors.filtered_users"] and isinstance(evt, MessageEvent):
                 await evt.reply("Sorry, you're not allowed to vote.")
             return
         if self.karma_t.is_vote_event(target):
-            if self.config["errors.vote_on_vote"]:
+            if self.config["errors.vote_on_vote"] and isinstance(evt, MessageEvent):
                 await evt.reply("Sorry, you can't vote on votes.")
             return
         karma_target = await self.client.get_event(evt.room_id, target)
         if not karma_target:
             return
         if karma_target.sender == evt.sender and value > 0:
-            if self.config["errors.upvote_self"]:
+            if self.config["errors.upvote_self"] and isinstance(evt, MessageEvent):
                 await evt.reply("Hey! You can't upvote yourself!")
             return
         karma_id = dict(given_to=karma_target.sender, given_by=evt.sender, given_in=evt.room_id,
@@ -203,7 +231,7 @@ class KarmaBot(Plugin):
         existing = self.karma_t.get(**karma_id)
         if existing is not None:
             if existing.value == value:
-                if self.config["errors.already_voted"]:
+                if self.config["errors.already_voted"] and isinstance(evt, MessageEvent):
                     await evt.reply(f"You already {self._sign(value)}'d that message.")
                 return
             existing.update(new_value=value)
@@ -211,7 +239,8 @@ class KarmaBot(Plugin):
             karma = self.karma_t(**karma_id, given_from=evt.event_id, value=value,
                                  content=self._parse_content(karma_target) if not anonymize else "")
             karma.insert()
-        await evt.mark_read()
+        if isinstance(evt, MessageEvent):
+            await evt.mark_read()
 
     def _denotify(self, mxid: UserID) -> str:
         localpart, _ = self.client.parse_mxid(mxid)

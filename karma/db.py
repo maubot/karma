@@ -148,6 +148,17 @@ class Karma:
         return cls(given_to=given_to, given_by=given_by, given_in=given_in, given_for=given_for,
                    given_from=given_from, given_at=given_at, value=value, content=content)
 
+    @classmethod
+    def get_by_given_from(cls, given_from: EventID) -> Optional['Karma']:
+        rows = cls.db.execute(cls.t.select().where(cls.c.given_from == given_from))
+        try:
+            (given_to, given_by, given_in, given_for,
+             given_from, given_at, value, content) = next(rows)
+        except StopIteration:
+            return None
+        return cls(given_to=given_to, given_by=given_by, given_in=given_in, given_for=given_for,
+                   given_from=given_from, given_at=given_at, value=value, content=content)
+
     def delete(self) -> None:
         self.db.execute(self.t.delete().where(and_(
             self.c.given_to == self.given_to, self.c.given_by == self.given_by,
