@@ -1,5 +1,5 @@
 # karma - A maubot plugin to track the karma of users.
-# Copyright (C) 2018 Tulir Asokan
+# Copyright (C) 2019 Tulir Asokan
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
