@@ -119,7 +119,7 @@ class KarmaBot(Plugin):
 
     @karma.subcommand("view", help="View your or another users karma")
     @command.argument("user", "user ID", required=False,
-                      parser=lambda val: Client.parse_mxid(val) if val else None)
+                      parser=lambda val: Client.parse_user_id(val) if val else None)
     async def view_karma(self, evt: MessageEvent, user: Optional[Tuple[str, str]]) -> None:
         if user is not None:
             mxid = UserID(f"@{user[0]}:{user[1]}")
@@ -243,7 +243,7 @@ class KarmaBot(Plugin):
             await evt.mark_read()
 
     def _denotify(self, mxid: UserID) -> str:
-        localpart, _ = self.client.parse_mxid(mxid)
+        localpart, _ = self.client.parse_user_id(mxid)
         return "\u2063".join(localpart)
 
     def _user_link(self, user_id: UserID) -> str:
