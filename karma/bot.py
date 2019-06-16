@@ -179,7 +179,6 @@ class KarmaBot(Plugin):
         if not self.config["store_content"]:
             return ""
         if isinstance(evt, MessageEvent):
-            evt.content.trim_reply_fallback()
             if evt.content.msgtype in (MessageType.NOTICE, MessageType.TEXT, MessageType.EMOTE):
                 body = evt.content.body
                 if evt.content.msgtype == MessageType.EMOTE:
