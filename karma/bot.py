@@ -19,8 +19,8 @@ import json
 import html
 
 from mautrix.client import Client
-from mautrix.types import (Event, StateEvent, EventID, UserID, FileInfo, MessageType,
-                           MediaMessageEventContent, EventType, GenericEvent, RedactionEvent)
+from mautrix.types import (Event, StateEvent, EventID, UserID, FileInfo, MessageType, RelationType,
+                           MediaMessageEventContent, EventType, ReactionEvent, RedactionEvent)
 from mautrix.client.api.types.event.message import media_reply_fallback_body_map
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from maubot import Plugin, MessageEvent
@@ -56,11 +56,6 @@ def sha1(val: str) -> str:
     return hashlib.sha1(val.encode("utf-8")).hexdigest()
 
 
-def reaction_key(evt: GenericEvent) -> None:
-    relates_to = evt.content.get("m.relates_to", None) or {}
-    return relates_to.get("key") if relates_to.get("rel_type", None) == "m.annotation" else None
-
-
 class KarmaBot(Plugin):
     karma_t: Type[Karma]
     version: Type[Version]
@@ -90,19 +85,19 @@ class KarmaBot(Plugin):
     def downvote(self, evt: MessageEvent, _: Tuple[str]) -> Awaitable[None]:
         return self._vote(evt, evt.content.get_reply_to(), -1)
 
-    @command.passive(regex=UPVOTE_EMOJI, field=reaction_key,
-                     event_type=EventType.find("m.reaction"), msgtypes=None)
-    def upvote_react(self, evt: GenericEvent, key: Tuple[str]) -> Awaitable[None]:
+    @command.passive(regex=UPVOTE_EMOJI, field=lambda evt: evt.content.relates_to.key,
+                     event_type=EventType.REACTION, msgtypes=None)
+    def upvote_react(self, evt: ReactionEvent, key: Tuple[str]) -> Awaitable[None]:
         try:
-            return self._vote(evt, evt.content["m.relates_to"]["event_id"], 1)
+            return self._vote(evt, evt.content.relates_to.event_id, 1)
         except KeyError:
             pass
 
-    @command.passive(regex=DOWNVOTE_EMOJI, field=reaction_key,
-                     event_type=EventType.find("m.reaction"), msgtypes=None)
-    def downvote_react(self, evt: GenericEvent, key: Tuple[str]) -> Awaitable[None]:
+    @command.passive(regex=DOWNVOTE_EMOJI, field=lambda evt: evt.content.relates_to.key,
+                     event_type=EventType.REACTION, msgtypes=None)
+    def downvote_react(self, evt: ReactionEvent, key: Tuple[str]) -> Awaitable[None]:
         try:
-            return self._vote(evt, evt.content["m.relates_to"]["event_id"], -1)
+            return self._vote(evt, evt.content.relates_to.event_id, -1)
         except KeyError:
             pass
 
