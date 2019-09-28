@@ -69,13 +69,15 @@ class KarmaBot(Plugin):
     async def karma(self) -> None:
         pass
 
-    @karma.subcommand("up", help="Upvote a message")
-    def upvote(self, evt: MessageEvent) -> Awaitable[None]:
-        return self._vote(evt, evt.content.get_reply_to(), +1)
+    @karma.subcommand("up", help="Upvote an event")
+    @command.argument("event_id", "Event ID", required=True)
+    def upvote(self, evt: MessageEvent, event_id: EventID) -> Awaitable[None]:
+        return self._vote(evt, event_id, +1)
 
     @karma.subcommand("down", help="Downvote a message")
-    def downvote(self, evt: MessageEvent) -> Awaitable[None]:
-        return self._vote(evt, evt.content.get_reply_to(), -1)
+    @command.argument("event_id", "Event ID", required=True)
+    def downvote(self, evt: MessageEvent, event_id: EventID) -> Awaitable[None]:
+        return self._vote(evt, event_id, -1)
 
     @command.passive(UPVOTE)
     def upvote(self, evt: MessageEvent, _: Tuple[str]) -> Awaitable[None]:
