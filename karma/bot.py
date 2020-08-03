@@ -19,9 +19,9 @@ import json
 import html
 
 from mautrix.client import Client
-from mautrix.types import (Event, StateEvent, EventID, UserID, FileInfo, MessageType, RelationType,
-                           MediaMessageEventContent, EventType, ReactionEvent, RedactionEvent)
-from mautrix.client.api.types.event.message import media_reply_fallback_body_map
+from mautrix.types import (Event, StateEvent, EventID, UserID, FileInfo, MessageType, EventType,
+                           MediaMessageEventContent, ReactionEvent, RedactionEvent)
+from mautrix.types.event.message import media_reply_fallback_body_map
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from maubot import Plugin, MessageEvent
 from maubot.handlers import command, event
